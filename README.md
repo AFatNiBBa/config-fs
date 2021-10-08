@@ -101,7 +101,7 @@ const config = {
     },
     "a/b": "hi"
 };
-const myFs = new Config(config);
+const myFs = new cfs(config);
 
 // (You can compare buffers and strings)
 myFs.get("a/b").read() == "hello"                           // The "Config.get()" method returns a "Data" object, which represents the selected node
@@ -110,7 +110,7 @@ myFs.get("a\\/b").read() == "hi"                            // You can use a bac
 myFs.get([ "a", "b" ]).read() == "hello"                    // If you pass an array you don't have to escape the eventual slashes
 myFs.get([ "a/b" ]).read() == "hi"
 
-myFs.get([ "a" ]).get("b").read() == "hello";               // The "Data.get()" method works exactly as the "Config.get()"
+myFs.get([ "a" ]).get("b").read() == "hello"                // The "Data.get()" method works exactly as the "Config.get()"
 myFs.get("a/b").get([ cfs.parent ]).read() == "default"     // If you use the array mode of the method you can pass "cfs.parent" to get the parent node
 
 myFs.get("a/b/c").read() == "hello"                         // The "b" node is not a folder, so "c" will be ignored
@@ -123,7 +123,7 @@ require("express")().use((req, res) =>
         // in order to make them available in the config's functions through "this.req" and "this.res"
         .set(req, res)
         .get(req.url)
-        .read()
+        .read() + ""
     )
 );
 
@@ -138,6 +138,6 @@ myFs.get("a").write("text")                                 // The function "Dat
 config.a[cfs.index] = "text"
 
 myFs.get("a").delete()                                      // The function "Data.delete()" does the same thing as the line after this one
-delete config.a[cfs.index]
+delete config.a                                             // (The operation is not performed on the property with "cfs.index" as key because folders can be eliminated)
 ```
 For more informations regarding the functions check the documentation comments in "main.js"

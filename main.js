@@ -1,8 +1,4 @@
 
-/*
-    [???]: Tutte le robe sull'esempio del "readme.md"
-*/
-
 module.exports = (function () {
 
     const fs = require("fs");
@@ -271,7 +267,8 @@ module.exports = (function () {
         {
             path = join(ctx, path);
             const out = function(mode, args = [], data) {
-                const temp = join(path, ...args) + ext;
+                var temp = join(path, ...args);
+                temp = (fs.lstatSync(temp).isDirectory() ? join(temp, "index") : temp) + ext;
                 switch(mode)
                 {
                     case "list": return fs.readdirSync(temp);
