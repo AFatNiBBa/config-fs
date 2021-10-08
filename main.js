@@ -260,15 +260,16 @@ module.exports = (function () {
          * Delegates the request to the current property to a real folder or file.
          * @param {String} path The real folder or file
          * @param {String} ext String to put at the end of the requested path; Prevents the access to everything that doesn't end with that
+         * @param {String} index The default file when a folder is the target
          * @param {String} ctx The current path (For reliable relative paths)
          * @returns The redirection function
          */
-        static(path, ext = "", ctx = "")
+        static(path, ext = "", index = "index", ctx = "")
         {
             path = join(ctx, path);
             const out = function(mode, args = [], data) {
                 var temp = join(path, ...args);
-                temp = (fs.lstatSync(temp).isDirectory() ? join(temp, "index") : temp) + ext;
+                temp = (mode !== "list" && mode !== "delete" && fs.lstatSync(temp).isDirectory() ? join(temp, index) : temp) + ext;
                 switch(mode)
                 {
                     case "list": return fs.readdirSync(temp);
@@ -281,7 +282,7 @@ module.exports = (function () {
                 }
             };
             out[customScan] = x => x;
-            out[customSource] = () => `cfs.static(${ JSON.stringify(path) }, ${ JSON.stringify(ext) })`;
+            out[customSource] = () => `cfs.static(${ JSON.stringify(path) }, ${ JSON.stringify(ext) }, ${ JSON.stringify(index) })`;
             return out;
         },
 

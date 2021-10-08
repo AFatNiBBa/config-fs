@@ -37,7 +37,7 @@ config_folder
 const { index, global, static } = require("config-fs");
 module.exports = {
     public: {                                                       // An object represents a folder
-        real: static("./real", ".html", __dirname),                 // You can use the "static()" method and passing it a real file or folder to make every request to this property be a real file interaction (You can pass an optional extension that will be applied to every requested file, preventing the access to files that don't end with that)
+        real: static("./real", ".html", "default_file", __dirname), // You can use the "static()" method and passing it a real file or folder to make every request to this property be a real file interaction; You can pass an optional extension that will be applied to every requested file (preventing the access to files that don't end with that) and the name of the default file when a folder is specified
         binary: Buffer.from('aGVsbw==', "base64"),                  // A buffer represents binary data
         string: "hi",                                               // A string is just content
         concat: [                                                   // Concatenated data, every other type of data (except folders) can be contained here
@@ -66,7 +66,7 @@ const cfs = require("config-fs");
 module.exports = (x => ({ 
 	public: ( 
 		x[2] = { 
-			real: cfs.static("*absolute path to './real'*", ".html"), 
+			real: cfs.static(<absolute path to "real">, ".html", "default_file"), 
 			binary: x[1] = Buffer.from("aGVsbw==", "base64"), 
 			string: "hi", 
 			concat: x[3] = [ 
