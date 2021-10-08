@@ -20,7 +20,7 @@ You can both create a configuration with an object which will represent the file
 If you create a config through a config folder you can save the updates to the config file by using `myFs.save()`. <br>
 A config folder has this structure
 ```sh
-config_folder
+config_folder/
 ├ config.js     # It will export the config object
 ├ 1             # Normal files that can be referenced by the config object (The name must be a number)
 ├ 2/            # A sub config folder (The name must be a number)
