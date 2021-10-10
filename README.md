@@ -1,6 +1,6 @@
 
 # config-fs
-Create a virtual file system that works as an object, multiple and circular references included
+Create a virtual file system that works as an object, multiple and circular references included. Great as a router for the 'express' module.
 
 ## Usage
 You can both import the package like this...

@@ -1,4 +1,8 @@
 
+/*
+    [WIP]: URL non come percorsi (includi '?', '#', ecc...)
+*/
+
 module.exports = (function () {
 
     const fs = require("fs");
