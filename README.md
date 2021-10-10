@@ -64,29 +64,29 @@ For example the prevous configuration gets saved as this:
 ```js
 const cfs = require("config-fs");
 module.exports = (x => ({ 
-	public: ( 
-		x[2] = { 
-			real: cfs.static(<absolute path to "real">, ".html", "default_file"), 
-			binary: x[1] = Buffer.from("aGVsbw==", "base64"), 
-			string: "hi", 
-			concat: x[3] = [ 
-				"a", 
-				"b", 
-				1, 
-				x[1] 
-			], 
-			[cfs.index]: "index" 
-		}, 
-		x[2].public = x[2] 
-	), 
-	dynamic(
-        mode,
-        path,
-        data
-    ) { }, 
-	ref: 1n, 
-	concat: x[3], 
-	[cfs.global]: "Error 404: File not found!" 
+  public: ( 
+    x[2] = { 
+      real: cfs.static(<absolute path to "./real">, ".html", "default_file"), 
+      binary: x[1] = Buffer.from("aGVsbw==", "base64"), 
+      string: "hi", 
+      concat: x[3] = [ 
+        "a", 
+        "b", 
+        1, 
+        x[1] 
+      ], 
+      [cfs.index]: "index" 
+    }, 
+    x[2].public = x[2] 
+  ), 
+  dynamic(                                                          // A function that will be called when an operation is performed ('this' is the currrent folder as a "Data" instance),
+    mode,                                                           // 'mode' can be "list" (readdirSync), "read", "append", "write", "delete"
+    path,                                                           // Trailing elements of path (If you get the path "a/b/c/d" and "b" is a function, then path will be an array containing "c" and "d")
+    data,                                                           // It's present in "append", "write" and "delete" (In delete mode it tells you if you should delete the eventual real file)
+  ) { }, 
+  ref: 1n, 
+  concat: x[3], 
+  [cfs.global]: "Error 404: File not found!" 
 }))({});
 ```
 
