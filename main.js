@@ -1,6 +1,8 @@
 
 /*
-    [WIP]: URL non come percorsi (includi '?', '#', ecc...)
+    [MAY]: preformatting
+    [MAY]: parameters
+    [MAY]: templates
 */
 
 module.exports = (function () {
@@ -18,33 +20,41 @@ module.exports = (function () {
      */
     class Config
     {
+        [customScan](x) { return x; }
+
+        [customSource]() 
+        {
+            return this.file != null
+            ? `cfs.Config.from(${ JSON.stringify(this.file) })`
+            : `new cfs.Config(${ JSON.stringify(this.data.value) })`;
+        }
+
         /**
-         * Gets a "Config" from a config folder.
-         * @param {String} dir The path of the config folder
+         * Gets a "Config" from a config file.
+         * @param {String} file The path of the config file
          * @param {String} ctx The current directory (For reliable relative paths)
          * @param {Boolean} cached Indicates if the config file should be reloaded if it has been already loaded in the past
          * @returns The "Config" instance
          */
-        static from(dir, ctx = "", cached = false)
+        static from(file, ctx = "", cached = false)
         {
-            dir = resolve(join(ctx, dir));
-            const file = join(dir, "config.js");
+            file = resolve(join(ctx, file));
+            if (fs.lstatSync(file).isDirectory())
+                file = join(file, "config.js");
             if (!cached)
                 delete require.cache[require.resolve(file)];
-            return new this(require(file), dir, cached);
+            return new this(require(file), file);
         }
 
         /**
          * Creates an instance of a file system configuration object.
          * @param {any} data The object that will represent the file system
-         * @param {String} dir The eventual position of the current object's config folder
-         * @param {Boolean} cached Indicates if other configs created by this should be cached
+         * @param {String} file The eventual position of the current object's config file
          */
-        constructor(data, dir = "", cached = false)
+        constructor(data, file)
         {
-            this.cached = cached;
-            this.file = join((this.dir = dir), "config.js");
             this.data = Data.from({ value: data, config: this });
+            this.file = file;
         }
 
         /**
@@ -57,8 +67,8 @@ module.exports = (function () {
         {
             opts.tab ??= 2;
             opts.safe ??= false;
-            opts.export ??= '\nconst cfs = require("config-fs");\nmodule.exports = ';
-            opts.namespace ??= new Map([ index, global ].map(x => [ x, x.description ]));
+            opts.export ??= `\nconst cfs = require("config-fs");\nmodule.exports = `;
+            opts.namespace ??= new Map([ index, global, parent ].map(x => [ x, x.description ]));
             return uneval.write(file, this.data.value, opts);
         }
 
@@ -72,10 +82,18 @@ module.exports = (function () {
 
         /**
          * Equivalent to calling the "Data.get()" method on the top level configuration object.
+         * Saves the last requested path in "Config.last"
          * @param {String|Array} path The sub object to get from the config (As a "Data" instance)
          * @returns The "Data" instance
          */
-        get(path) { return this.data.get(path); }
+        get(path) { return this.data.get(this.last = path); }
+
+        /**
+         * Same as calling "Config.get()" but the parameter is parsed as an url
+         * @param {String|URL} path The url
+         * @returns The selected node
+         */
+        url(path) { return this.get(Config.url(path)); }
     }
 
     /**
@@ -83,6 +101,8 @@ module.exports = (function () {
      */
     class Data
     {
+        static nonFolderObjects = new Set([ Array, Buffer, Config, Data ]);
+        
         /**
          * Makes the object in input an instance of "Data".
          * @param {Object} obj The object to transform
@@ -114,19 +134,21 @@ module.exports = (function () {
          */
         item(key)
         {
-            return key === parent
-            ? this.parent
-            : Data.from({
-                ...this,
-                ...(
-                    (typeof this.value !== "object" || this.value instanceof Array || this.value instanceof Buffer)
-                    ? { path: (this.path ?? []).concat(key) }
-                    : key in this.value
-                        ? { value: this.value[key], parent: this }
-                        : { value: this.value[index] ?? this.config.data.value[global], parent: this, path: [ key ] }
-                ),
-                key
-            });
+            return (key === global && this.config.data !== this)
+            ? this.config.data.item(global) // If the current "Data" is at top level it obtains the key normally
+            : (key === parent)
+                ? this.parent
+                : Data.from({
+                    ...this,
+                    ...(
+                        (typeof this.value !== "object" || Data.nonFolderObjects.has(this.value.constructor))
+                        ? { path: (this.path ?? []).concat(key) }
+                        : key in this.value
+                            ? { value: this.value[key], parent: this }
+                            : { value: this.value[index] ?? this.config.data.value[global], parent: this, path: [ key ] }
+                    ),
+                    key
+                });
         }
     
         /**
@@ -135,39 +157,40 @@ module.exports = (function () {
          */
         list()
         {
-            switch (typeof this.value)
+            if (typeof this.value === "function")
+                return this.value.call(this, "list", this.path, undefined, this);
+            else if (this.value == null || typeof this.value !== "object")
+                return null;
+            else switch(this.value.constructor)
             {
-                case "bigint":
-                case "number":      return this.onRef(null, "list")
-                case "function":    return this.value.call(this, "list", this.path);
-                case "object":      return Object.keys(this.value);
-                default:            return null;
+                case Buffer:
+                case Array:     return null;
+                case Data:
+                case Config:    return this.value.get(this.path).list();
+                default:        return Object.keys(this.value);
             }
         }
     
         /**
          * Gets the content of the current node (fs.readFileSync).
          * @param {Object} value The value of the node (The current one by the default)
-         * @returns A "Buffer" of the content
+         * @returns A "Buffer" of the content or 'null' if nothing could be read
          */
         read(value = this.value)
         {
-            if (value instanceof Buffer)
-                return value;
-            else if (value instanceof Array)
-                return Buffer.concat(value.map(x => {
-                    const out = this.read(x);
-                    return (out instanceof Buffer)
-                    ? out
-                    : Buffer.from(out + "")
-                }));
-            else switch(typeof value)
+            if (value == null)
+                return null;
+            else if (typeof value === "function")
+                return value.call(this, "read", this.path, undefined, this);
+            else if (typeof value !== "object")
+                return Buffer.from(value + "");
+            else switch(value.constructor)
             {
-                case "number":
-                case "bigint":      return this.onRef("readFileSync", "read", undefined, value);
-                case "string":      return Buffer.from(value);
-                case "function":    return value.call(this, "read", this.path);
-                case "object":      return this.item(index).read();
+                case Buffer:    return value;
+                case Array:     return Buffer.concat(value.map(x => ((x = this.read(x) ?? "") instanceof Buffer) ? x : Buffer.from(x + "")));
+                case Data:
+                case Config:    return value.get(this.path).read();
+                default:        return this.item(index).read();
             }
         }
 
@@ -178,21 +201,17 @@ module.exports = (function () {
          */
         append(data)
         {
-            switch (typeof this.value)
+            if (typeof this.value === "function")
+                return this.value.call(this, "append", this.path, data, this);
+            else if (typeof this.value === "object") switch(this.value.constructor)
             {
-                case "number":
-                case "bigint":      return this.onRef("appendFileSync", "append", data);
-                case "function":    return this.value.call(this, "append", this.path, data);
-                case "object":
-                    if (!(this.value instanceof Array))
-                        return this.item(index).append(data);
-                default:
-                    this.ref = (
-                        (this.value instanceof Array)
-                        ? this.value.concat(data)
-                        : [ this.value, data ]
-                    );
+                case Buffer:    break;
+                case Array:     return this.value.push(data);
+                case Data:
+                case Config:    return this.value.get(this.path).append(data);
+                default:        return this.item(index).append(data);
             }
+            this.ref = [ this.value, data ];
         }
     
         /**
@@ -202,55 +221,32 @@ module.exports = (function () {
          */
         write(data)
         {
-            switch (typeof this.value)
+            if (typeof this.value === "function")
+                return this.value.call(this, "write", this.path, data, this);
+            else if (typeof this.value === "object") switch(this.value.constructor)
             {
-                case "number":
-                case "bigint":      return this.onRef("writeFileSync", "write", data);
-                case "function":    return this.value.call(this, "write", this.path, data);
-                case "object":
-                    if (!(this.value instanceof Array))
-                        return this.item(index).write(data);
-                default:            this.ref = data;
+                case Buffer:
+                case Array:     break;
+                case Data:
+                case Config:    return this.value.get(this.path).write(data);
+                default:        return this.item(index).write(data);
             }
+            this.ref = data;
         }
 
         /**
          * Deletes the current node (fs.unlinkSync).
          * @param {Boolean} ref Should the function delete the eventual real file the node represents
          * @param {Boolean} ignorePath Should the function delete the eventual real file the node represents even if the path points to a inner value to that node (Happens when trying to access an element of something which can't contain elements)
-         * @returns Something you should ignore
+         * @returns A boolean representing if the node was deleted
          */
         delete(ref = true, ignorePath = false)
         {
             ref = ref && (ignorePath || !this.path?.length);
-            switch (typeof this.value)
-            {
-                case "function":
-                    return this.value.call(this, "delete", this.path, ref);
-
-                case "number":
-                case "bigint":
-                    if (ref)
-                        this.onRef("unlinkSync", "delete", ref);
-                default:
-                    delete this.parent.value[this.key];
-            }
-        }
-
-        /**
-         * If "value" points to a file executes an "fs" module function on it, else it tries to load the reference as a config folder and executes an "config-fs" function on the config object.
-         * @param {String} f The name of the "fs" function
-         * @param {String} fV The name of the "config-fs" function
-         * @param {any} data The eventual data to pass to the chosen function
-         * @param {Number} value The real file/folder reference (The current node's one by default)
-         * @returns Whatever the chosen function returns
-         */
-        onRef(f, fV, data, value = this.value)
-        {
-            const path = join(this.config.dir, value + "");
-            return (f && fs.lstatSync(path).isFile())
-            ? fs[f](path, data)
-            : Config.from(path, "", this.config.cached).get(this.path)[fV]?.(data);
+            if (typeof this.value !== "function" || (this.value.call(this, "delete", this.path, ref, this) ?? true))
+                if ("parent" in this)
+                    return delete this.parent.value[this.key];
+            return false;
         }
     }
 
@@ -261,32 +257,60 @@ module.exports = (function () {
         [customSource]: () => `(${ arguments.callee })()`,
 
         /**
+         * Makes an url a valid "config-fs" path
+         * @param {String|URL} x The url
+         * @returns The valid path
+         */
+        url: x => decodeURIComponent(new URL(x, "http://a").pathname.substr(1)),
+
+        /**
          * Delegates the request to the current property to a real folder or file.
-         * @param {String} path The real folder or file
-         * @param {String} ext String to put at the end of the requested path; Prevents the access to everything that doesn't end with that
-         * @param {String} index The default file when a folder is the target
-         * @param {String} ctx The current path (For reliable relative paths)
+         * @param {String} temp The real folder or file
+         * @param {Object} opts Settings
+         * @param {String} ctx (In "opts") The current path (For reliable relative paths)
+         * @param {String} ext (In "opts") String to put at the end of the requested path; Prevents the access to everything that doesn't end with that
+         * @param {String} index (In "opts") The default file when a folder is the target
+         * @param {Boolean} isFolder (In "opts") Should the sub-paths be used?
          * @returns The redirection function
          */
-        static(path, ext = "", index = "index", ctx = "")
+        static(path, opts)
         {
-            path = join(ctx, path);
-            const out = function(mode, args = [], data) {
-                var temp = join(path, ...args);
-                temp = (mode !== "list" && mode !== "delete" && fs.lstatSync(temp).isDirectory() ? join(temp, index) : temp) + ext;
-                switch(mode)
-                {
-                    case "list": return fs.readdirSync(temp);
-                    case "append": return fs.appendFileSync(temp, data);
-                    case "write": return fs.writeFileSync(temp, data);
-                    case "delete": return data && fs.unlinkSync(temp);
+            const { ctx = "", ext = "", index = "index", isFolder = true } = opts;
 
-                    default:
-                    case "read": return fs.readFileSync(temp);
+            const temp = join(ctx, path);
+            const out = function(mode, args = [], data) {
+                try
+                {
+                    var file = isFolder ? join(temp, ...args) : temp;
+                    file = (mode !== "list" && mode !== "delete" && fs.lstatSync(file).isDirectory() ? join(file, index) : file) + ext;
+                    switch(mode)
+                    {
+                        case "list": return fs.readdirSync(file);
+                        case "append": return fs.appendFileSync(file, data);
+                        case "write": return fs.writeFileSync(file, data);
+                        case "delete": return data && fs.unlinkSync(file);
+
+                        default:
+                        case "read": return fs.readFileSync(file);
+                    }
                 }
+                catch { return this.item(global).read(); } // Se una funzione da errore restituisce la pagina globale (Da per scontato che la modalità era "read")
             };
             out[customScan] = x => x;
-            out[customSource] = () => `cfs.static(${ JSON.stringify(path) }, ${ JSON.stringify(ext) }, ${ JSON.stringify(index) })`;
+            out[customSource] = () => `cfs.static(${ JSON.stringify(path) }, ${ uneval(opts, { tab: 0, endl: 0, safe: 0 }) })`;
+            return out;
+        },
+
+        /**
+         * Delegates the request to the current property to a real file relative to the "ctx" path.
+         * @param {String} path The real file
+         * @param {String} ctx The current path, will be always serialized as "__dirname"
+         * @returns The redirection function
+         */
+        reference(path, ctx = "")
+        {
+            const out = Config.static(path, { ctx, isFolder: false });
+            out[customSource] = () => `cfs.reference(${ JSON.stringify(path) }, __dirname)`;
             return out;
         },
 
