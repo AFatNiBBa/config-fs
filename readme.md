@@ -2,6 +2,9 @@
 # config-fs
 Create a virtual file system that works as an object, multiple and circular references included. Great as a router for the 'express' module.
 
+## Warning
+If you use a **template** (See, `module.exports.public.concat[2]` in "[Config Object Values](#config-object-values)"), it will be applied to binary files too
+
 ## Usage
 You can both import the package like this...
 ```js
@@ -33,9 +36,13 @@ module.exports = {
         realFile: reference("./a.txt", __dirname),  // You can use the "reference()" method, which is similiar to "static()", but supports only specific files and has the "isFolder" option set to 'false'; You can pass the "ctx" setting as the second argument
         binary: Buffer.from('aGVsbw==', "base64"),  // A buffer represents binary data
         string: "hi",                               // A string is just content
-        concat: [                                   // Concatenated data, every other type of data (except folders) can be contained here
+        concat: [                                   // Concatenated data, every other type of data can be contained here
             "a",
             "b",
+            {                                       // An object inside of an array will have a template (represented by the array) applied to each one of the inner nodes
+              [index]: "c",
+              secret: "e"
+            },
             1                                       // Every non object is converted to string
         ],
         [index]: "index"                            // If you set the "index" symbol as key, it will be used as a sustitute every time a file does not exists in its directory
@@ -57,33 +64,37 @@ If you load the configuration from a config file or pass a path after the config
 For example the prevous configuration gets saved as this:
 ```js
 const cfs = require("config-fs");
-module.exports = (x => ({ 
+module.exports = ((x = {}) => ({ 
   public: ( 
     x[2] = { 
       realFolder: cfs.static("./real", { ctx: <absolute path to "." />, ext: ".html", index: "default_file", isFolder: true }), 
       realFile: cfs.reference("./a.txt", __dirname), 
       binary: x[1] = Buffer.from("aGVsbw==", "base64"), 
       string: "hi", 
-      concat: x[3] = [ 
+      concat: x[4] = [ 
         "a", 
         "b", 
+        { 
+          secret: "e", 
+          [x[3] = cfs.index]: "c" 
+        }, 
         1, 
         x[1] 
       ], 
-      [cfs.index]: "index" 
+      [x[3]]: "index" 
     }, 
     x[2].public = x[2] 
   ), 
-  dynamic(
+  dynamic( // I manually removed the comments on this function, but they would normally have been maintained after the config save
         mode,
         path,
         data,
         self
     ) { }, 
-  inner: cfs.Config.from(<absolute path to "./sub.js" />),
-  concat: x[3], 
+  inner: cfs.Config.from(<absolute path to "./sub.js" />), 
+  concat: x[4], 
   [cfs.global]: "Error 404: File not found!" 
-}))({});
+}))();
 ```
 
 ## Data Access
@@ -93,7 +104,7 @@ const config = {
     a: {
         [cfs.index]: "default",
         b: "hello",
-        c: 1
+        c: [ "d", "e" ]
     },
     "a/b": "hi"
 };
@@ -116,6 +127,13 @@ myFs.get("a").get([
 
 myFs.get("a/b/c").read() == "hello"                         // The "b" node is not a folder, so "c" will be ignored
 myFs.get("a/b/c").path.join() == "c"                        // The "Data.path" field contains the unused path's sections
+
+myFs.data.item("a/b").read() == "hi"                        // The "Data.item()" method does the same thing as the line after this one
+myFs.data.get([ "a/b" ]).read() == "hi"                     // (It gets the node using array mode but an element at a time)
+
+myFs.get("a/c").item(0, true).path.join() == ""             // You can pass a second argument to "Data.item()" which will decide if the every object should be considered as a folder
+myFs.get("a/c").item(0).path.join() == "0"                  // (In this example "a/c" is an array and by default it is not considered a folder, so '0' gets added to the trailing path array)
+myFs.get("a/c/0", true).read() == "de"                      // The same parameter can be added to "Data.get()" and "Config.get()"
 
 require("express")().use((req, res) =>
     res.send(

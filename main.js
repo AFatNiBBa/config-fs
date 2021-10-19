@@ -1,10 +1,4 @@
 
-/*
-    [MAY]: preformatting
-    [MAY]: parameters
-    [MAY]: templates
-*/
-
 module.exports = (function () {
 
     const fs = require("fs");
@@ -12,7 +6,6 @@ module.exports = (function () {
     const { uneval, utils: { customScan, customSource } } = require("uneval.js");
 
     const index = Symbol.for("cfs.index");
-    const global = Symbol.for("cfs.global");
     const parent = Symbol.for("cfs.parent");
 
     /**
@@ -84,9 +77,10 @@ module.exports = (function () {
          * Equivalent to calling the "Data.get()" method on the top level configuration object.
          * Saves the last requested path in "Config.last"
          * @param {String|Array} path The sub object to get from the config (As a "Data" instance)
+         * @param {Boolean} folder If 'true' will consider every object as a folder
          * @returns The "Data" instance
          */
-        get(path) { return this.data.get(this.last = path); }
+        get(path, folder) { return this.data.get(this.last = path, folder); }
 
         /**
          * Same as calling "Config.get()" but the parameter is parsed as an url
@@ -123,16 +117,18 @@ module.exports = (function () {
         /**
          * Gets a sub "Data" relatively.
          * @param {String|Array} path The path to the sub object to get from the config (As a "Data" instance)
+         * @param {Boolean} folder If 'true' will consider every object as a folder
          * @returns The sub object
          */
-        get(path) { return Config.split(path).reduce((obj, k) => obj.item(k), this); }
+        get(path, folder) { return Config.split(path).reduce((obj, k) => obj.item(k, folder), this); }
     
         /**
          * Gets a sub "Data" relatively (Only one level deep).
          * @param {String|Array} key The sub object to get from the config (As a "Data" instance)
+         * @param {Boolean} folder If 'true' will consider every object as a folder
          * @returns The sub object
          */
-        item(key)
+        item(key, folder = false)
         {
             return (key === global && this.config.data !== this)
             ? this.config.data.item(global) // If the current "Data" is at top level it obtains the key normally
@@ -141,7 +137,7 @@ module.exports = (function () {
                 : Data.from({
                     ...this,
                     ...(
-                        (typeof this.value !== "object" || Data.nonFolderObjects.has(this.value.constructor))
+                        (typeof this.value !== "object" || (!folder && Data.nonFolderObjects.has(this.value.constructor)))
                         ? { path: (this.path ?? []).concat(key) }
                         : key in this.value
                             ? { value: this.value[key], parent: this }
@@ -174,9 +170,10 @@ module.exports = (function () {
         /**
          * Gets the content of the current node (fs.readFileSync).
          * @param {Object} value The value of the node (The current one by the default)
+         * @param {Number} k Indicates that the current value being processed is in an array
          * @returns A "Buffer" of the content or 'null' if nothing could be read
          */
-        read(value = this.value)
+        read(value = this.value, k)
         {
             if (value == null)
                 return null;
@@ -187,10 +184,16 @@ module.exports = (function () {
             else switch(value.constructor)
             {
                 case Buffer:    return value;
-                case Array:     return Buffer.concat(value.map(x => ((x = this.read(x) ?? "") instanceof Buffer) ? x : Buffer.from(x + "")));
+                case Array:     return Buffer.concat(value.map((x, i) => ((x = this.read(x, i) ?? "") instanceof Buffer) ? x : Buffer.from(x + "")));
                 case Data:
                 case Config:    return value.get(this.path).read();
-                default:        return this.item(index).read();
+                default:
+                    console.log(value, k, this.path);
+                    return (
+                        k // If defined it means that we are processing an object inside of an array
+                        ? this.item(k, true).get(this.path)
+                        : this.item(index)
+                    ).read();
             }
         }
 

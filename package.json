@@ -1,6 +1,6 @@
 {
   "name": "config-fs",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Create a virtual file system that works as an object, multiple and circular references included. Great as a router for the 'express' module.",
   "main": "main.js",
   "scripts": {
