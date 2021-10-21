@@ -157,4 +157,4 @@ config.a[cfs.index] = "text"
 myFs.get("a").delete()                                      // The function "Data.delete()" does the same thing as the line after this one
 delete config.a                                             // (The operation is not performed on the property with "cfs.index" as key because folders can be eliminated)
 ```
-For more informations regarding the functions check the documentation comments in "main.js"
+For more informations regarding the functions check the documentation comments in "main.d.ts"
